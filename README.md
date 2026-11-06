@@ -125,10 +125,18 @@ Each run creates a fresh results/gemini_.../ directory, preserving baseline file
   offline labels and source-row indices for reconstructing cases.
 - human_review.csv: low-confidence cases awaiting manual review, with blank human
   decision columns and no ground-truth labels.
+- confusion_diabetes.png, confusion_breast_cancer.png, confusion_heart.png:
+  executor confusion matrices for the cases routed in this LLM run. Rows are true
+  labels and columns are predictions, in label order 0, 1. Breast cancer uses
+  0=malignant and 1=benign; the other two use 0=negative and 1=positive. Titles show
+  the routed sample size. With no routed cases, the matrix is zero and marked
+  "No routed cases" rather than interpreted as perfect classification.
 
-Only these four files are saved. Routing metrics, executor confusion matrices,
-case counts, runtime and token usage are printed in the terminal; no additional
-JSON, CSV, prompt or image files are generated. Existing result files are unchanged.
+Each run saves four data/log files and three PNG images. Routing metrics, executor
+confusion matrices, case counts, runtime and token usage are also printed in the
+terminal. No additional JSON, CSV or prompt files are generated, and results from
+previous runs are not overwritten. The images measure classifier performance on
+routed cases, not the LLM planner's routing precision or recall.
 
 Routing precision is TP/(TP+FP); recall is TP/(TP+FN). The disease-positive label
 is 1 for diabetes and heart, but 0 (malignant) for breast cancer. Undefined ratios

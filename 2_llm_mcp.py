@@ -682,6 +682,20 @@ for disease in DISEASES:
     print(f"Labels: {executor_reports[disease]['label_meaning']}")
     print(cm)
 
+    fig, ax = plt.subplots(figsize=(4.5, 4))
+    display_labels = [
+        f"{label}: {meaning}"
+        for label, meaning in executor_reports[disease]["label_meaning"].items()
+    ]
+    ConfusionMatrixDisplay(cm, display_labels=display_labels).plot(
+        ax=ax, cmap="Blues", values_format="d", colorbar=False
+    )
+    title = f"{disease.replace('_', ' ').title()} executor (n={len(subset)})"
+    ax.set_title(title if len(subset) else title + "\nNo routed cases")
+    fig.tight_layout()
+    fig.savefig(output_dir / f"confusion_{disease}.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
 metric_df = pd.DataFrame(metrics)
 
 summary = {
