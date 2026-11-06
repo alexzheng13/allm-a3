@@ -1,0 +1,20 @@
+PatientID,case_text,proposed_routes,proposed_primary,confidence_diabetes,confidence_breast_cancer,confidence_heart,threshold,reason,review_status,human_routes,human_primary,human_notes
+1934,"Patient 1934. You are a triage assistant.
+You must decide which diagnostic pathway(s) to run: diabetes, breast_cancer or heart.
+
+Patient features:
+age=46.0, sex=1.0, cp=1.0, trestbps=101.0, chol=197.0,
+fbs=1.0, rest ecg=1.0, thalach=156.0, exang=0.0, oldpeak=0.0,
+slope=2.0, ca=0.0,
+Pregnancies=3.0, Glucose=81.0, Blood Pressure=86.0, Skin Thickness=16.0,
+Insulin=66.0, BMI=27.5, Diabetes Pedigree Function=0.306.
+Breast features: mean radius=10.490, mean texture=18.610, mean perimeter=66.860, mean area=334.300, mean smoothness=0.107.
+
+Output JSON only.
+Output format (example):
+{
+  ""routes"": [""diabetes"", ""heart""],
+  ""primary"": ""heart"",
+  ""confidence"": {""diabetes"": 0.35, ""heart"": 0.72, ""breast_cancer"": 0.05},
+  ""notes"": ""Brief triage rationale.""
+}","[""diabetes"", ""heart""]",heart,0.45,0.05,0.55,0.6,"The patient presents with chest pain (cp=1.0) and abnormal resting ECG (rest ecg=1.0), which necessitates a cardiac evaluation despite the normal exercise stress test indicators. The diabetes screening is justified by the elevated fasting blood sugar (fbs=1.0), though other glucose metrics are within normal ranges. Breast features do not indicate malignancy.",pending,,,
