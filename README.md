@@ -17,7 +17,16 @@ mkdir -p results
 python 1_basic_mcp.py
 ~~~
 
-The original training and baseline scripts are unchanged.
+The training script uses RandomForestClassifier(random_state=42, n_jobs=-1) for
+all three diseases. Training overwrites the three model/*.pkl files; reproducible
+predictions also depend on using the same data and software versions. It still
+trains on the full datasets, without a held-out test split.
+
+The baseline keeps the original rule-based planners and executors, but fixes
+sampling with np.random.seed(42), uses unique IDs patient_0000 through patient_0099,
+creates results/ automatically and saves prediction/metric CSV files. Each of the
+100 IDs has three independently sampled domain records, giving 300 diagnostic
+tasks rather than 300 distinct patients.
 
 ## Run the Gemini planner
 
@@ -28,12 +37,27 @@ source code or submit them. Then run:
 python 2_llm_mcp.py
 ~~~
 
+To rerun the complete pipeline after configuring your key:
+
+~~~bash
+(
+  set -e
+  export MPLBACKEND=Agg
+  python -u 0_train_models.py
+  python -u 1_basic_mcp.py
+  python -u 2_llm_mcp.py
+)
+~~~
+
+Training overwrites the model files. The baseline overwrites its same-named files
+under results/; the Gemini simulation creates a new timestamped directory.
+
 The script follows the original five STEP sections and executes directly at
 module level. There is no main(), command-line argument parser or load_inputs().
 Do not import it for inspection: importing runs the simulation.
 
 It samples 100 combined cases using .sample(1) and relative data/model paths.
-CASE_SEED defaults to 42 to make source-row sampling reproducible; it does not
+random_seed is fixed at 42 to make source-row sampling reproducible; it does not
 make Gemini responses deterministic. The constructor retains the six original
 arguments and the three original disease pathways. The original
 executor is unchanged. Short UUID-based IDs are checked for duplicates so that
@@ -51,60 +75,36 @@ fails is recorded as failed for that case; the remaining cases continue.
 
 ## Optional extensions
 
-VerifierAgent always runs; the confidence threshold defaults to 0.6:
+VerifierAgent is the only retained bonus extension and always runs. The planner
+writes a review task into shared context. The verifier makes a separate Gemini
+call, seeing case features and the proposed decision but never true labels. It
+can retain or revise the selected routes and primary. Only valid reviewed
+decisions are sent to executors. An invalid or failed review blocks execution
+for that case and is recorded as failed. The verifier uses the same model with
+a different review prompt, not an independently trained expert; shared errors
+remain possible.
 
-1. VerifierAgent: the planner writes a review task into shared context. A second
-   agent makes a separate Gemini call, seeing case features and the proposed
-   decision but never true labels. It can retain or revise routes, change the
-   primary pathway or abstain. Only reviewed decisions are sent to executors.
-   It uses the same model with a different review prompt, not an independently
-   trained medical expert; shared errors remain possible. An invalid or failed
-   review blocks execution for that case and is recorded as failed.
-2. Confidence gate: each selected pathway must have confidence >= 0.6. Low-score
-   routes are removed. If the primary was removed, the remaining route with the
-   highest confidence becomes primary. If no routes remain, status is abstained
-   with abstention_reason=low_confidence. A model's own empty route list uses
-   abstention_reason=model. These scores are not calibrated probabilities; 0.6 is
-   an experimental policy setting, not a clinically established threshold.
-3. Human-review queue: if every selected route is removed for low confidence,
-   the case is marked pending_human_review and queued without waiting for input.
-   These cases are written to human_review.csv at the end of the simulation.
-   They are not sent to executors; other cases continue normally. Partial filtering
-   and a model's own empty route list do not enter this queue. This implements a
-   handoff for later review, not a completed human decision/execution loop.
+The scheduler runs planner -> verifier -> executors, exchanging tasks through
+shared context. make_case_text() is unchanged. Each response must select one
+or more routes, with primary among them. Confidence values remain in the original
+JSON format for logging only: there is no confidence threshold, explicit
+abstention option or human-review queue. Low confidence does not prevent a valid
+route from being executed, so this educational policy is not a clinical safeguard.
 
-make_case_text() is unchanged. Each of the three diseases must have a confidence score. The
-same scheduler runs planner -> verifier -> confidence gate -> review queue or executors; the
-agents exchange review and execution tasks through shared context.
+Normal runs use about 200 Gemini calls for 100 cases (one planner and one
+verifier call per case), before correction calls or API retries. Any older results
+from the threshold/human-review version describe that version, not this one.
 
-No interactive input is requested. The review CSV includes case text, the proposed
-routes and primary, all three confidence scores, threshold and decision notes, but
-not true labels. human_routes, human_primary and human_notes are blank for later
-manual review. Editing this CSV does not automatically execute classifiers; there
-is no import/resume command. If no cases need review, the CSV has only its header.
-
-Normal extended runs use about 200 Gemini calls for 100 cases (one planner and
-one verifier call per case), before correction calls or API retries. Old results
-without the extensions are not evidence of their performance. To compare confidence
-filtering, keep CASE_SEED and the three disease pathways fixed:
-
-~~~bash
-# Full extended run (these are the defaults).
-TRIAGE_CONFIDENCE_THRESHOLD=0.6 python 2_llm_mcp.py
-
-# Same three disease pathways and verifier, without confidence filtering.
-TRIAGE_CONFIDENCE_THRESHOLD=0 python 2_llm_mcp.py
-~~~
-
-All commands above make real API calls. CASE_SEED can be changed through the
-environment for a new case sample. To run on a headless host, prefix a command
+Running the script makes real API calls. The sampling seed is set in the source,
+not through an environment variable. To run on a headless host, prefix a command
 with MPLBACKEND=Agg; no backend is forced in the source code.
 
 ## Planner behavior
 
 - make_case_text() is unchanged. Dataset labels are never sent to Gemini.
 - JSON schema and Python validation restrict routes, primary, confidence and notes.
-- Multiple routes and explicit abstention are allowed.
+- One or more routes are required. Empty routes or a null primary are invalid
+  responses and get the same correction handling as malformed JSON.
 - Malformed output gets one correction call; a second failure is logged as
   parse_error with no routes and remains in the routing evaluation denominator.
 - There is no model.api_error flag. Cases whose API requests exhaust retries have
@@ -112,19 +112,26 @@ with MPLBACKEND=Agg; no backend is forced in the source code.
   routing scores. Failure counts are printed separately. They are not retried in
   the next scheduler round. Ctrl+C interrupts normally and is not retried.
 - Confidence values are uncalibrated model output, not diagnostic probabilities.
+  They are recorded but do not filter routes.
 
 ## Outputs
 
-Each run creates a fresh results/gemini_.../ directory, preserving baseline files:
+The baseline writes these files directly under results/:
+
+- baseline_predictions.csv: individual predictions, labels and domain IDs.
+- baseline_metrics.csv: per-disease accuracy and disease-positive precision,
+  recall and F1; breast cancer uses positive label 0 (malignant).
+- output.png: prediction counts by disease.
+- confusion_diabetes.png, confusion_breast_cancer.png, confusion_heart.png:
+  baseline executor confusion matrices. These are not the LLM-routed matrices.
+
+Each Gemini run creates a fresh results/gemini_.../ directory, preserving baseline files:
 
 - executor_results.csv: routed classification results and true labels.
 - llm_calls.jsonl: prompts, responses, parsing errors, timing and the calling agent.
 - triage_decisions.json: final routes and status, original planner decision,
-  verification decision/verdict, pre-threshold decision, filtered routes, threshold,
-  abstention reason and human-review queue status when applicable,
+  verification decision/verdict,
   offline labels and source-row indices for reconstructing cases.
-- human_review.csv: low-confidence cases awaiting manual review, with blank human
-  decision columns and no ground-truth labels.
 - confusion_diabetes.png, confusion_breast_cancer.png, confusion_heart.png:
   executor confusion matrices for the cases routed in this LLM run. Rows are true
   labels and columns are predictions, in label order 0, 1. Breast cancer uses
@@ -132,24 +139,27 @@ Each run creates a fresh results/gemini_.../ directory, preserving baseline file
   the routed sample size. With no routed cases, the matrix is zero and marked
   "No routed cases" rather than interpreted as perfect classification.
 
-Each run saves four data/log files and three PNG images. Routing metrics, executor
+Each run saves three data/log files and three PNG images. Routing metrics, executor
 confusion matrices, case counts, runtime and token usage are also printed in the
 terminal. No additional JSON, CSV or prompt files are generated, and results from
 previous runs are not overwritten. The images measure classifier performance on
 routed cases, not the LLM planner's routing precision or recall.
 
+The verifier-only run in [results/gemini_20261109_223524_589924/](results/gemini_20261109_223524_589924/)
+contains 100 cases, all with status ok, and 232 executed diagnostic tasks. Its
+llm_calls.jsonl contains 100 planner calls and 100 verifier calls, with no logged
+API failures or parsing corrections. The verifier kept routes/primary unchanged
+for 50 cases and changed them for 50; this count alone does not show that the
+changes improved routing. It is a single run, not a statistical comparison.
+
 Routing precision is TP/(TP+FP); recall is TP/(TP+FN). The disease-positive label
 is 1 for diabetes and heart, but 0 (malignant) for breast cancer. Undefined ratios
 are zero for a nonempty evaluation; an empty evaluation reports null scores.
-API/verification-failed, pending-human-review and unprocessed cases are excluded
-and counted separately. A run with pending reviews is marked incomplete.
-Abstentions remain in the routing denominator with no selected routes. Coverage
-is the fraction of evaluated cases sent to at least one executor; failure counts
-must also be reported rather than treating lower coverage as an improvement.
-Pending-review counts are printed separately. Do not treat excluded uncertain cases
-as correct predictions or claim that exporting a queue demonstrates completed human
-review or clinical safety. The batch finishes, but summary.completed stays false
-while there are unresolved human reviews.
+API/verification-failed and unprocessed cases are excluded and counted separately.
+Planner parse failures remain in the routing denominator with no selected routes;
+these are technical failures, not intentional abstentions. Coverage is the fraction
+of evaluated cases sent to at least one executor. Failure counts must also be
+reported rather than treating exclusions as an improvement.
 
 Executor scores are conditional on routing. The three original classifiers are
 still evaluated in-sample because their training data are also used for sampling.

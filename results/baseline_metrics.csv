@@ -1,0 +1,4 @@
+Disease,n,accuracy,precision_positive,recall_positive,f1_positive,positive_label
+diabetes,100,1.0,1.0,1.0,1.0,1
+breast_cancer,100,1.0,1.0,1.0,1.0,0
+heart,100,1.0,1.0,1.0,1.0,1

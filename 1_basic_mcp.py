@@ -95,8 +95,9 @@ class MCPMesaModel:
         self.results = []
 
         # Add cases to queue (patients)
-        for _ in range(100):
-            pid = str(uuid.uuid4().int)[:4]
+        for i in range(100):
+            # MODIFIED: deterministic, unique case IDs; original four-digit IDs could collide.
+            pid = f"patient_{i:04d}"
             idx = X_d.sample(1).index[0]
             self.case_queue.append((pid, X_d.loc[idx].values, "diabetes", int(y_d.loc[idx])))
             # Breast cancer
@@ -144,6 +145,10 @@ clf_breast = joblib.load("model/breast.pkl")
 clf_heart = joblib.load("model/heart.pkl")
 
 
+# MODIFIED: seeded sampling; maintain the original dataset and agent workflow.
+np.random.seed(42)
+from pathlib import Path
+Path("results").mkdir(parents=True, exist_ok=True)
 model = MCPMesaModel(X_d, X_b, X_h, clf_diabetes, clf_breast, clf_heart)
 
 for step in range(3):
@@ -157,6 +162,8 @@ for step in range(3):
 results_df = pd.DataFrame(model.results)
 print("Results Collected:", len(results_df))
 print(results_df.head())
+# NEW CODE: preserve baseline predictions for report comparisons.
+results_df.to_csv("results/baseline_predictions.csv", index=False)
 
 if not results_df.empty and "Disease" in results_df.columns and "y_pred" in results_df.columns:
     plt.figure(figsize=(10, 6))
@@ -167,10 +174,13 @@ if not results_df.empty and "Disease" in results_df.columns and "y_pred" in resu
     plt.legend(title="Prediction", labels=["Negative", "Positive"])
     plt.tight_layout()
     plt.savefig("results/output.png")
+    plt.close()
 else:
     print("No results to display.")
 
 
+# NEW CODE: save report-ready baseline metrics; label 0 is malignant for breast.
+baseline_metrics = []
 for disease in results_df["Disease"].unique():
     sub = results_df[results_df["Disease"] == disease].dropna(subset=["y_true", "y_pred"])
     if sub.empty:
@@ -182,6 +192,17 @@ for disease in results_df["Disease"].unique():
 
     print(f"\n=== {disease} ===")
     print(classification_report(y_true, y_pred, digits=3))
+    positive_label = 0 if disease == "breast_cancer" else 1
+    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+    baseline_metrics.append({
+        "Disease": disease,
+        "n": len(sub),
+        "accuracy": accuracy_score(y_true, y_pred),
+        "precision_positive": precision_score(y_true, y_pred, pos_label=positive_label, zero_division=0),
+        "recall_positive": recall_score(y_true, y_pred, pos_label=positive_label, zero_division=0),
+        "f1_positive": f1_score(y_true, y_pred, pos_label=positive_label, zero_division=0),
+        "positive_label": positive_label,
+    })
 
     cm = confusion_matrix(y_true, y_pred)
     disp = ConfusionMatrixDisplay(confusion_matrix=cm)
@@ -190,3 +211,6 @@ for disease in results_df["Disease"].unique():
     plt.tight_layout()
     plt.savefig(f"results/confusion_{disease}.png")
     plt.close()
+# NEW CODE: baseline evaluation CSV for the report.
+pd.DataFrame(baseline_metrics).to_csv("results/baseline_metrics.csv", index=False)
+print("Saved baseline metrics and plots under results/.")
