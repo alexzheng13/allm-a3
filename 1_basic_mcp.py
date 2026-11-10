@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import uuid
-import warnings
 import joblib
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -9,7 +8,6 @@ from sklearn.datasets import load_breast_cancer
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
 
 
-warnings.filterwarnings("ignore")
 
 # ==========================================
 # STEP 1: Define Custom Scheduler (like RandomActivation)

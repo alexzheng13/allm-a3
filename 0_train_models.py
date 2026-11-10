@@ -8,11 +8,9 @@ import joblib
 import os
 import seaborn as sns
 import matplotlib.pyplot as plt
-import warnings
 from sklearn.datasets import load_breast_cancer
 from sklearn.ensemble import RandomForestClassifier
 
-warnings.filterwarnings("ignore")
 
 os.makedirs("model", exist_ok=True)
 

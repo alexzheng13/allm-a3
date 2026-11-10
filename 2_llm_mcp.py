@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import uuid
-import warnings
 import joblib
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -23,7 +22,6 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 
-warnings.filterwarnings("ignore")
 
 random_seed = 42
 DISEASES = ("diabetes", "breast_cancer", "heart")
